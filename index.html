@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>TDR 350 Field Scout v1.9.4</title>
+<title>TDR 350 Field Scout v1.9.5</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
@@ -191,7 +191,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <div class="header">
     <div>
       <div class="header-title">FIELD SCOUT</div>
-      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.4</div>
+      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.5</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="sync-badge" id="syncBadge">SYNC --</span>
@@ -292,9 +292,15 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   </div>
   <div class="gps-card">
     <div class="card-label">GPS COORDINATES</div>
-    <div class="gps-row"><span class="gps-key">LATITUDE</span><span class="gps-val" id="gpsLat">--</span></div>
-    <div class="gps-row"><span class="gps-key">LONGITUDE</span><span class="gps-val" id="gpsLon">--</span></div>
+    <div class="gps-row"><span class="gps-key">LATITUDE RAW</span><span class="gps-val" id="gpsLat">--</span></div>
+    <div class="gps-row"><span class="gps-key">LONGITUDE RAW</span><span class="gps-val" id="gpsLon">--</span></div>
     <div class="gps-row"><span class="gps-key">DECIMAL</span><span class="gps-val" id="gpsDecimal" style="font-size:10px">--</span></div>
+    <div class="gps-row"><span class="gps-key">STATUS</span><span class="gps-val" id="gpsStatus" style="font-size:10px;color:var(--text-dim)">WAITING</span></div>
+    <div class="gps-row"><span class="gps-key">LAST POLL</span><span class="gps-val" id="gpsLastPoll" style="font-size:10px;color:var(--text-dim)">--</span></div>
+    <div class="gps-row" style="border-bottom:none">
+      <span class="gps-key">RAW BYTES</span>
+      <span class="gps-val" id="gpsRawBytes" style="font-size:9px;color:var(--amber);word-break:break-all;max-width:200px;text-align:right">--</span>
+    </div>
   </div>
   <button class="save-reading-btn" onclick="manualSave()">⊕ SAVE READING NOW</button>
   <div class="log-section">
@@ -790,12 +796,21 @@ async function autoSaveReading(){
     await Promise.allSettled(pollKeys.map(async key=>{
       try{
         const c=await bleService.getCharacteristic(CHARS[key]);
-        const val=decodeAscii(await c.readValue());
+        const raw=await c.readValue();
+        const val=decodeAscii(raw);
+        if(key==='lat'||key==='lon'){
+          const bytes=Array.from(new Uint8Array(raw.buffer));
+          const hex=bytes.map(b=>b.toString(16).padStart(2,'0')).join(' ');
+          document.getElementById('gpsRawBytes').textContent=(key==='lat'?'LAT: ':'LON: ')+hex+' → "'+val+'"';
+          document.getElementById('gpsLastPoll').textContent='POLLED '+new Date().toTimeString().slice(0,8);
+        }
         // Only accept non-empty values that aren't placeholder dashes
         if(val && val.length>0 && !val.match(/^[-\.]+$/)){
           updateUI(key,val);
         }
-      }catch(e){}
+      }catch(e){
+        if(key==='lat'||key==='lon') document.getElementById('gpsRawBytes').textContent='POLL ERR ('+key+'): '+e.message;
+      }
     }));
     // EC: try to read but fall back to last indicated value silently
     try{
@@ -997,12 +1012,36 @@ function updateDecimalGPS(){
 async function subscribeChar(svc,uuid,key){
   try{
     const c=await svc.getCharacteristic(uuid);
-    updateUI(key,decodeAscii(await c.readValue()));
+    const initVal=await c.readValue();
+    // Show raw hex bytes for GPS characteristics in debug panel
+    if(key==='lat'||key==='lon'){
+      const bytes=Array.from(new Uint8Array(initVal.buffer));
+      const hex=bytes.map(b=>b.toString(16).padStart(2,'0')).join(' ');
+      const ascii=new TextDecoder().decode(initVal);
+      document.getElementById('gpsRawBytes').textContent=(key==='lat'?'LAT: ':'LON: ')+hex+' → "'+ascii+'"';
+      document.getElementById('gpsLastPoll').textContent='INIT READ '+new Date().toTimeString().slice(0,8);
+    }
+    updateUI(key,decodeAscii(initVal));
     if(c.properties.indicate||c.properties.notify){
       await c.startNotifications();
-      c.addEventListener('characteristicvaluechanged',e=>updateUI(key,decodeAscii(e.target.value)));
+      c.addEventListener('characteristicvaluechanged',e=>{
+        if(key==='lat'||key==='lon'){
+          const bytes=Array.from(new Uint8Array(e.target.value.buffer));
+          const hex=bytes.map(b=>b.toString(16).padStart(2,'0')).join(' ');
+          const ascii=new TextDecoder().decode(e.target.value);
+          document.getElementById('gpsRawBytes').textContent=(key==='lat'?'LAT: ':'LON: ')+hex+' → "'+ascii+'"';
+          document.getElementById('gpsLastPoll').textContent='INDICATED '+new Date().toTimeString().slice(0,8);
+        }
+        updateUI(key,decodeAscii(e.target.value));
+      });
     }
-  }catch(e){console.warn('Could not subscribe to',key,e.message);}
+  }catch(e){
+    console.warn('Could not subscribe to',key,e.message);
+    if(key==='lat'||key==='lon'){
+      document.getElementById('gpsStatus').textContent='CHAR ERROR: '+e.message;
+      document.getElementById('gpsStatus').style.color='var(--red)';
+    }
+  }
 }
 async function handleConnect(){
   if(connected){disconnect();return;}
@@ -1046,6 +1085,14 @@ window.addEventListener('load',()=>{
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
 
 
 
