@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>TDR 350 Field Scout v1.9.1</title>
+<title>TDR 350 Field Scout v1.9.2</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
@@ -191,7 +191,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <div class="header">
     <div>
       <div class="header-title">FIELD SCOUT</div>
-      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.1</div>
+      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.2</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="sync-badge" id="syncBadge">SYNC --</span>
@@ -266,7 +266,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <div class="readings-grid">
     <div class="reading-card amber">
       <div class="card-label">TEMPERATURE</div>
-            <div class="reading-value" id="tempValue">--.-</div>
+      <div class="reading-value" id="tempValue">--.-</div>
       <div class="reading-unit">°C Soil Surface</div>
     </div>
     <div class="reading-card green">
@@ -625,22 +625,28 @@ function updateSessionBanner(){
 }
 
 // ── Autosave ──────────────────────────────────────────────────────────────────
-function autoSaveReading(){
+async function autoSaveReading(){
   if(!activeSession)return;
   const vwc=currentData.vwc;
   if(!vwc||isNaN(parseFloat(vwc)))return;
   const now=Date.now();
   if(vwc===lastAutoSaveValue&&(now-lastAutoSaveTime)<5000)return;
   if(saveTimer)clearTimeout(saveTimer);
-  // 5 second buffer — gives GPS and other characteristics time to report in
-  let remaining=5;
-  setStatus('READING RECEIVED — SAVING IN '+remaining+'s...','connecting');
-  const countdown=setInterval(()=>{
-    remaining--;
-    if(remaining>0) setStatus('COLLECTING DATA — SAVING IN '+remaining+'s...','connecting');
-    else clearInterval(countdown);
-  },1000);
-  saveTimer=setTimeout(()=>{saveTimer=null;clearInterval(countdown);commitSave();},5000);
+  lastAutoSaveValue=vwc; lastAutoSaveTime=now;
+  setStatus('READING RECEIVED — POLLING SENSORS...','connecting');
+  // Actively re-read every characteristic so we get fresh values for this probe insertion
+  if(bleService){
+    const pollKeys=['temp','ec','lat','lon','soil','period','unk1'];
+    await Promise.allSettled(pollKeys.map(async key=>{
+      try{
+        const c=await bleService.getCharacteristic(CHARS[key]);
+        const val=decodeAscii(await c.readValue());
+        if(val) updateUI(key,val);
+      }catch(e){}
+    }));
+  }
+  setStatus('DATA COLLECTED — SAVING...','connecting');
+  saveTimer=setTimeout(()=>{saveTimer=null;commitSave();},500);
 }
 
 function commitSave(){
@@ -652,7 +658,7 @@ function commitSave(){
     ec:currentData.ec||'--',lat:currentData.lat||'--',
     lon:currentData.lon||'--',soil:currentData.soil||'--',period:currentData.period||'--',
   };
-  lastAutoSaveValue=currentData.vwc;lastAutoSaveTime=Date.now();
+  
   activeSession.readings.unshift(entry);
   persistSessions();
   syncReadingToCloud(entry,activeSession.label);
@@ -876,3 +882,10 @@ window.addEventListener('load',()=>{
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
