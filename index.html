@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>TDR 350 Field Scout v1.9.6</title>
+<title>TDR 350 Field Scout v1.9.7</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
@@ -191,7 +191,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <div class="header">
     <div>
       <div class="header-title">FIELD SCOUT</div>
-      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.6</div>
+      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.7</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="sync-badge" id="syncBadge">SYNC --</span>
@@ -997,33 +997,53 @@ function updateDecimalGPS(){
 async function subscribeChar(svc,uuid,key){
   try{
     const c=await svc.getCharacteristic(uuid);
-    const initVal=await c.readValue();
-    // Show raw hex bytes for GPS characteristics in debug panel
-    if(key==='lat'||key==='lon'){
-      const bytes=Array.from(new Uint8Array(initVal.buffer));
-      const hex=bytes.map(b=>b.toString(16).padStart(2,'0')).join(' ');
-      const ascii=new TextDecoder().decode(initVal);
-      document.getElementById('gpsRawBytes').textContent=(key==='lat'?'LAT: ':'LON: ')+hex+' → "'+ascii+'"';
-      document.getElementById('gpsLastPoll').textContent='INIT READ '+new Date().toTimeString().slice(0,8);
-    }
-    updateUI(key,decodeAscii(initVal));
-    if(c.properties.indicate||c.properties.notify){
-      await c.startNotifications();
-      c.addEventListener('characteristicvaluechanged',e=>{
-        if(key==='lat'||key==='lon'){
-          const bytes=Array.from(new Uint8Array(e.target.value.buffer));
-          const hex=bytes.map(b=>b.toString(16).padStart(2,'0')).join(' ');
-          const ascii=new TextDecoder().decode(e.target.value);
-          document.getElementById('gpsRawBytes').textContent=(key==='lat'?'LAT: ':'LON: ')+hex+' → "'+ascii+'"';
-          document.getElementById('gpsLastPoll').textContent='INDICATED '+new Date().toTimeString().slice(0,8);
-        }
-        updateUI(key,decodeAscii(e.target.value));
-      });
+
+    // Read initial value
+    try{
+      const initVal=await c.readValue();
+      const ascii=decodeAscii(initVal);
+      if(key==='lat'||key==='lon'){
+        document.getElementById('gpsRawBytes').textContent=(key==='lat'?'LAT: ':'LON: ')+ascii;
+        document.getElementById('gpsLastPoll').textContent='INIT '+new Date().toTimeString().slice(0,8);
+      }
+      updateUI(key,ascii);
+    }catch(e){ console.warn('Initial read failed for',key,e.message); }
+
+    // Register value changed handler first
+    c.addEventListener('characteristicvaluechanged', e=>{
+      const val=decodeAscii(e.target.value);
+      if(key==='lat'||key==='lon'){
+        document.getElementById('gpsRawBytes').textContent=(key==='lat'?'LAT: ':'LON: ')+val;
+        document.getElementById('gpsLastPoll').textContent='IND '+new Date().toTimeString().slice(0,8);
+      }
+      updateUI(key,val);
+    });
+
+    // Enable indications via CCCD (0x2902 descriptor)
+    // INDICATE = 0x0200, NOTIFY = 0x0100
+    // Web Bluetooth startNotifications() handles both but we also
+    // manually write the CCCD to ensure INDICATE is enabled
+    if(c.properties.indicate || c.properties.notify){
+      try{
+        await c.startNotifications();
+      }catch(e){ console.warn('startNotifications failed for',key,e.message); }
+
+      // Manually write CCCD descriptor to enable indications
+      if(c.properties.indicate){
+        try{
+          const cccd=await c.getDescriptor(0x2902);
+          // 0x0200 = enable indications
+          await cccd.writeValue(new Uint8Array([0x02, 0x00]));
+          if(key==='lat'||key==='lon'){
+            document.getElementById('gpsLastPoll').textContent='IND ENABLED '+new Date().toTimeString().slice(0,8);
+          }
+        }catch(e){ console.warn('CCCD write failed for',key,e.message); }
+      }
     }
   }catch(e){
     console.warn('Could not subscribe to',key,e.message);
     if(key==='lat'||key==='lon'){
-      document.getElementById('gpsStatus').textContent='CHAR ERROR: '+e.message;
+      document.getElementById('gpsStatus').textContent='ERR: '+e.message;
       document.getElementById('gpsStatus').style.color='var(--red)';
     }
   }
