@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>TDR 350 Field Scout v1.9.7</title>
+<title>TDR 350 Field Scout v1.9.8</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
@@ -191,7 +191,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <div class="header">
     <div>
       <div class="header-title">FIELD SCOUT</div>
-      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.7</div>
+      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.8</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="sync-badge" id="syncBadge">SYNC --</span>
@@ -357,6 +357,7 @@ const CHARS={
 
 // ── App state ─────────────────────────────────────────────────────────────────
 let device=null,server=null,bleService=null,connected=false,currentData={};
+let cachedChars={}; // cache characteristic objects for direct reads
 let activeSession=null,allSessions=[];
 let lastAutoSaveValue=null,lastAutoSaveTime=0,saveTimer=null;
 let mbMap=null,mapMarkers=[],mapPopups=[],mapFilter='session',activeLayer='vwc';
@@ -789,25 +790,34 @@ async function autoSaveReading(){
   if(saveTimer)clearTimeout(saveTimer);
   lastAutoSaveValue=vwc; lastAutoSaveTime=now;
   setStatus('READING RECEIVED — POLLING SENSORS...','connecting');
-  // Actively re-read characteristics that support READ
-  // Only update if response is a real value (not empty/dashes)
-  if(bleService){
-    const pollKeys=['temp']; // only poll what's confirmed readable; GPS/EC come via indication only
-    await Promise.allSettled(pollKeys.map(async key=>{
-      try{
-        const c=await bleService.getCharacteristic(CHARS[key]);
-        const raw=await c.readValue();
-        const val=decodeAscii(raw);
-
-        // Only accept non-empty values that aren't placeholder dashes
-        if(val && val.length>0 && !val.match(/^[-\.]+$/)){
-          updateUI(key,val);
+  // Use cached characteristic objects for sequential reads with retries
+  if(Object.keys(cachedChars).length>0){
+    const readKeys=['temp','lat','lon','soil','period'];
+    for(const key of readKeys){
+      const c=cachedChars[key];
+      if(!c) continue;
+      let success=false;
+      for(let attempt=0; attempt<3 && !success; attempt++){
+        try{
+          if(attempt>0) await new Promise(r=>setTimeout(r,400));
+          const raw=await c.readValue();
+          const val=decodeAscii(raw);
+          if(val && val.length>0 && !/^[-\.\s]+$/.test(val)){
+            updateUI(key,val);
+            if(key==='lat'||key==='lon'){
+              document.getElementById('gpsRawBytes').textContent=(key==='lat'?'LAT: ':'LON: ')+val;
+              document.getElementById('gpsLastPoll').textContent='READ OK '+new Date().toTimeString().slice(0,8);
+            }
+            success=true;
+          }
+        }catch(e){
+          if(key==='lat'||key==='lon'){
+            document.getElementById('gpsRawBytes').textContent=key+' attempt '+(attempt+1)+' FAIL: '+e.message.slice(0,50);
+            document.getElementById('gpsLastPoll').textContent='ERR '+new Date().toTimeString().slice(0,8);
+          }
         }
-      }catch(e){
-
       }
-    }));
-    // EC is indication-only — keep last received value, don't poll
+    }
   }
   setStatus('DATA COLLECTED — SAVING...','connecting');
   saveTimer=setTimeout(()=>{saveTimer=null;commitSave();},500);
@@ -997,6 +1007,7 @@ function updateDecimalGPS(){
 async function subscribeChar(svc,uuid,key){
   try{
     const c=await svc.getCharacteristic(uuid);
+    cachedChars[key]=c; // cache for direct reads later
 
     // Read initial value
     try{
@@ -1090,7 +1101,6 @@ window.addEventListener('load',()=>{
 </script>
 </body>
 </html>
-
 
 
 
