@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>TDR 350 Field Scout v1.9</title>
+<title>TDR 350 Field Scout v1.9.1</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
@@ -15,7 +15,7 @@
   --amber:#ffb300; --amber-dim:#7a5500; --red:#ff3b3b;
   --text:#c8e6c8; --text-dim:#4a6b4a;
   --mono:'Share Tech Mono',monospace; --sans:'Barlow Condensed',sans-serif;
-  --chrome:0px;
+  --chrome:0px; /* set by JS after measuring */
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden;height:100vh;}
@@ -24,21 +24,27 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .blink{animation:blink 1.2s step-end infinite;}
+
+/* ── Fixed chrome (header + status + tabs + session banner) ── */
 #chrome{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--bg);}
+
 .header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;border-bottom:1px solid var(--border);}
 .header-title{font-family:var(--sans);font-weight:900;font-size:22px;letter-spacing:0.08em;text-transform:uppercase;color:var(--green);text-shadow:0 0 20px var(--green);line-height:1;}
 .header-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:0.15em;margin-top:2px;}
 .connect-btn{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;padding:8px 16px;border-radius:2px;border:1px solid var(--green-dim);background:transparent;color:var(--green);cursor:pointer;white-space:nowrap;}
 .connect-btn.connected{border-color:var(--green);background:var(--green-glow);}
 .connect-btn.connecting{border-color:var(--amber-dim);color:var(--amber);animation:pulse 1s infinite;}
+
 .status-bar{display:flex;align-items:center;gap:8px;padding:7px 20px;background:var(--surface);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:0.08em;}
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--text-dim);flex-shrink:0;}
 .status-dot.online{background:var(--green);box-shadow:0 0 6px var(--green);}
 .status-dot.connecting{background:var(--amber);animation:pulse 1s infinite;}
 .status-dot.error{background:var(--red);}
+
 .tab-bar{display:flex;background:var(--surface);border-bottom:1px solid var(--border);}
 .tab{flex:1;padding:10px 4px;text-align:center;font-family:var(--mono);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;user-select:none;}
 .tab.active{color:var(--green);border-bottom-color:var(--green);}
+
 .session-banner{display:flex;align-items:center;justify-content:space-between;padding:9px 16px;background:rgba(57,255,20,0.03);border-bottom:1px solid var(--border);gap:10px;}
 .session-info{flex:1;min-width:0;}
 .session-label{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:0.15em;text-transform:uppercase;}
@@ -46,8 +52,12 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .session-name span{color:var(--text-dim);font-size:11px;}
 .session-btns{display:flex;gap:6px;flex-shrink:0;}
 .session-btn{font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:7px 12px;border-radius:2px;border:1px solid var(--green-dim);background:transparent;color:var(--green);cursor:pointer;white-space:nowrap;}
-#map{position:fixed;left:0;right:0;bottom:0;z-index:1;}
-#mapControls{position:fixed;left:0;right:0;z-index:50;}
+
+/* ── Map always fixed below chrome ── */
+#map{position:fixed;left:0;right:0;bottom:0;z-index:1;/* top set by JS */}
+
+/* ── Map UI overlay elements ── */
+#mapControls{position:fixed;left:0;right:0;z-index:50;/* top set by JS */}
 .map-toolbar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(10,14,10,0.92);border-bottom:1px solid var(--border);flex-wrap:wrap;}
 .map-toolbar-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:0.1em;}
 .map-tool-btn{font-family:var(--mono);font-size:10px;padding:5px 10px;border:1px solid var(--border);background:transparent;color:var(--text-dim);border-radius:2px;cursor:pointer;letter-spacing:0.08em;white-space:nowrap;}
@@ -58,13 +68,19 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .layer-btn.vwc.active{background:rgba(30,60,120,0.9);border-color:#3a6bc4;}
 .layer-btn.temp.active{background:rgba(140,50,0,0.9);border-color:#e05500;}
 .layer-btn.ec.active{background:rgba(90,10,90,0.9);border-color:#b030b0;}
+
 .map-legend{position:fixed;bottom:30px;right:10px;z-index:52;background:rgba(10,14,10,0.92);border:1px solid var(--border);border-radius:4px;padding:10px 12px;min-width:150px;font-family:var(--mono);font-size:10px;}
 .legend-title{color:var(--text-dim);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;font-size:9px;}
 .legend-gradient{height:10px;border-radius:2px;margin:4px 0 2px;border:1px solid rgba(255,255,255,0.1);}
 .legend-gradient-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);}
+
 .map-no-gps{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:52;text-align:center;pointer-events:none;font-family:var(--mono);font-size:12px;color:var(--text-dim);letter-spacing:0.1em;line-height:2;}
-.view{display:none;position:fixed;left:0;right:0;bottom:0;background:var(--bg);z-index:60;overflow-y:auto;}
+
+/* ── Scrollable view panels (dashboard + history) ── */
+.view{display:none;position:fixed;left:0;right:0;bottom:0;background:var(--bg);z-index:60;overflow-y:auto;/* top set by JS */}
 .view.active{display:block;}
+
+/* ── Dashboard ── */
 .main{padding:16px;display:flex;flex-direction:column;gap:12px;}
 .card-label{font-family:var(--mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;}
 .primary-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:20px;position:relative;overflow:hidden;}
@@ -117,6 +133,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .corner-tr{top:4px;right:4px;border-width:1px 1px 0 0}
 .corner-bl{bottom:4px;left:4px;border-width:0 0 1px 1px}
 .corner-br{bottom:4px;right:4px;border-width:0 1px 1px 0}
+
+/* ── History ── */
 .history-body{padding:12px 16px;display:flex;flex-direction:column;gap:10px;}
 .session-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;animation:fadeIn 0.2s ease;}
 .session-card-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;}
@@ -131,9 +149,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .session-card-rows.open{display:block;}
 .session-card-rows .log-entries{max-height:160px;}
 .no-sessions{text-align:center;padding:40px 20px;font-family:var(--mono);font-size:12px;color:var(--text-dim);letter-spacing:0.1em;}
+
+/* ── Sync status badge ── */
 .sync-badge{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;padding:2px 8px;border-radius:2px;border:1px solid var(--border);color:var(--text-dim);}
 .sync-badge.ok{border-color:var(--green-dim);color:var(--green);}
 .sync-badge.err{border-color:var(--amber-dim);color:var(--amber);}
+
+/* ── Confirm ── */
 .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:8000;display:none;align-items:center;justify-content:center;padding:20px;}
 .confirm-overlay.open{display:flex;}
 .confirm-box{background:var(--surface);border:1px solid var(--amber-dim);border-radius:4px;padding:24px 20px;width:100%;max-width:320px;text-align:center;}
@@ -144,25 +166,32 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .confirm-btn{flex:1;padding:10px;border-radius:2px;font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;border:1px solid;}
 .confirm-btn.yes{border-color:var(--green-dim);color:var(--green);background:transparent;}
 .confirm-btn.no{border-color:var(--border);color:var(--text-dim);background:transparent;}
+
+/* ── Mapbox popup ── */
 .mapboxgl-popup-content{background:var(--surface)!important;border:1px solid var(--border)!important;border-radius:4px!important;box-shadow:0 4px 20px rgba(0,0,0,0.8)!important;color:var(--text)!important;font-family:var(--mono)!important;padding:12px 14px!important;}
 .mapboxgl-popup-tip{border-top-color:var(--surface)!important;border-bottom-color:var(--surface)!important;}
 .mapboxgl-popup-close-button{color:var(--text-dim)!important;font-size:16px!important;padding:4px 8px!important;}
 .popup-label{color:var(--text-dim);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;}
 .popup-row{display:flex;justify-content:space-between;gap:16px;margin-top:3px;}
 .popup-val{color:var(--text);}
+
+/* ── Toast ── */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface);border:1px solid var(--green);border-radius:4px;padding:10px 20px;font-family:var(--mono);font-size:12px;color:var(--green);letter-spacing:0.1em;z-index:9999;transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);box-shadow:0 0 20px var(--green-glow);white-space:nowrap;}
 .toast.show{transform:translateX(-50%) translateY(0);}
+
 ::-webkit-scrollbar{width:4px;}
 ::-webkit-scrollbar-track{background:var(--bg);}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 </style>
 </head>
 <body>
+
+<!-- Fixed chrome -->
 <div id="chrome">
   <div class="header">
     <div>
       <div class="header-title">FIELD SCOUT</div>
-      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9</div>
+      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.1</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="sync-badge" id="syncBadge">SYNC --</span>
@@ -188,7 +217,11 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     </div>
   </div>
 </div>
+
+<!-- Map always in DOM, always visible, sits below views -->
 <div id="map"></div>
+
+<!-- Map overlay controls (shown when on map tab) -->
 <div id="mapControls" style="display:none;">
   <div class="map-toolbar">
     <span class="map-toolbar-label">DATA:</span>
@@ -202,6 +235,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <button class="layer-btn ec"         id="layerEc"   onclick="setLayer('ec')">EC mS/cm</button>
   </div>
 </div>
+
 <div class="map-legend" id="mapLegend" style="display:none;">
   <div class="legend-title" id="legendTitle"></div>
   <div class="legend-gradient" id="legendGradient"></div>
@@ -209,10 +243,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <span id="legendMin"></span><span id="legendMid"></span><span id="legendMax"></span>
   </div>
 </div>
+
 <div class="map-no-gps" id="mapNoGps" style="display:none;">
   NO GPS DATA IN SESSION<br>
   <span style="font-size:10px">GPS coordinates required for map plotting</span>
 </div>
+
+<!-- Dashboard view -->
 <div class="view active" id="view-dashboard">
 <div class="main">
   <div class="primary-card">
@@ -229,7 +266,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <div class="readings-grid">
     <div class="reading-card amber">
       <div class="card-label">TEMPERATURE</div>
-      <div class="reading-value" id="tempValue">--.-</div>
+            <div class="reading-value" id="tempValue">--.-</div>
       <div class="reading-unit">°C Soil Surface</div>
     </div>
     <div class="reading-card green">
@@ -273,11 +310,15 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   </div>
 </div>
 </div>
+
+<!-- History view -->
 <div class="view" id="view-history">
   <div class="history-body" id="historyBody">
     <div class="no-sessions">NO SESSIONS SAVED YET</div>
   </div>
 </div>
+
+<!-- Confirm -->
 <div class="confirm-overlay" id="confirmOverlay">
   <div class="confirm-box">
     <div class="confirm-title">NEW SESSION?</div>
@@ -289,110 +330,547 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   </div>
 </div>
 <div class="toast" id="toast"></div>
+
 <script>
-const SUPA_URL='https://qrbkqialgehtypqdmdlr.supabase.co';
-const SUPA_KEY='sb_publishable_Ds1x65zDWUwCPQ4il2G9wA_ISON9UFs';
-const supa=supabase.createClient(SUPA_URL,SUPA_KEY);
+// ── Supabase ──────────────────────────────────────────────────────────────────
+const SUPA_URL = 'https://qrbkqialgehtypqdmdlr.supabase.co';
+const SUPA_KEY = 'sb_publishable_Ds1x65zDWUwCPQ4il2G9wA_ISON9UFs';
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+// ── BLE ───────────────────────────────────────────────────────────────────────
 const SERVICE_UUID='a27c7127-8b04-4e00-a7b0-26b5e8c69c34';
 const BATTERY_SERVICE='0000180f-0000-1000-8000-00805f9b34fb';
 const BATTERY_CHAR='00002a19-0000-1000-8000-00805f9b34fb';
-const CHARS={vwc:'808d569d-0d0c-4859-939d-19c25365beb1',period:'a1a9c8aa-35b8-433f-ad07-ee29db7a4609',ec:'56c207c7-b823-450e-ab40-3a2a59d1da8c',temp:'5fece549-cf40-4b0e-8160-e0964e7a007b',unk1:'ab8c41a0-6c5c-4e4c-9f4b-f7d393afe151',lat:'eaff3c4a-8a7a-4114-8092-93218c5cf182',lon:'946eff6b-7948-46e1-9dd4-b1fffc05b787',soil:'65369d44-a087-42f8-8be4-8d5f0bad71e6',mode:'0e1ad5ca-59f3-4611-9077-e7c920850a8c'};
+const CHARS={
+  vwc:'808d569d-0d0c-4859-939d-19c25365beb1',period:'a1a9c8aa-35b8-433f-ad07-ee29db7a4609',
+  ec:'56c207c7-b823-450e-ab40-3a2a59d1da8c',temp:'5fece549-cf40-4b0e-8160-e0964e7a007b',
+  unk1:'ab8c41a0-6c5c-4e4c-9f4b-f7d393afe151',lat:'eaff3c4a-8a7a-4114-8092-93218c5cf182',
+  lon:'946eff6b-7948-46e1-9dd4-b1fffc05b787',soil:'65369d44-a087-42f8-8be4-8d5f0bad71e6',
+  mode:'0e1ad5ca-59f3-4611-9077-e7c920850a8c',
+};
+
+// ── App state ─────────────────────────────────────────────────────────────────
 let device=null,server=null,bleService=null,connected=false,currentData={};
 let activeSession=null,allSessions=[];
 let lastAutoSaveValue=null,lastAutoSaveTime=0,saveTimer=null;
 let mbMap=null,mapMarkers=[],mapPopups=[],mapFilter='session',activeLayer='vwc';
-let currentTab='dashboard',chromeHeight=0;
+let currentTab='dashboard';
+let chromeHeight=0;
+
+// ── Layout: measure chrome and position everything below it ───────────────────
 function layoutViews(){
   const chrome=document.getElementById('chrome');
   chromeHeight=chrome.getBoundingClientRect().height;
-  document.getElementById('map').style.top=chromeHeight+'px';
+  const mapDiv=document.getElementById('map');
+  mapDiv.style.top=chromeHeight+'px';
   document.querySelectorAll('.view').forEach(v=>v.style.top=chromeHeight+'px');
-  document.getElementById('mapControls').style.top=chromeHeight+'px';
-  if(mbMap)mbMap.resize();
+  const mc=document.getElementById('mapControls');
+  mc.style.top=chromeHeight+'px';
+  // legend stays bottom-right, no adjustment needed
+  if(mbMap) mbMap.resize();
 }
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
 function switchTab(name){
   currentTab=name;
-  ['dashboard','map','history'].forEach(t=>document.getElementById('tab-'+t).classList.toggle('active',t===name));
+  ['dashboard','map','history'].forEach(t=>{
+    document.getElementById('tab-'+t).classList.toggle('active',t===name);
+  });
+  // Views cover the map
   document.getElementById('view-dashboard').classList.toggle('active',name==='dashboard');
   document.getElementById('view-history').classList.toggle('active',name==='history');
+  // Map overlay controls
   const showMap=name==='map';
   document.getElementById('mapControls').style.display=showMap?'block':'none';
   document.getElementById('mapLegend').style.display=showMap?'block':'none';
+  // session banner hidden on history
   document.getElementById('sessionBanner').style.display=name==='history'?'none':'';
   if(showMap){
-    const mc=document.getElementById('mapControls');
-    const mcH=mc.getBoundingClientRect().height||80;
-    document.getElementById('map').style.top=(chromeHeight+mcH)+'px';
-    if(mbMap)setTimeout(()=>mbMap.resize(),50);
+    // Adjust map top to account for map controls (toolbar + layer selector ~80px)
+    const totalTop=chromeHeight+80;
+    document.getElementById('map').style.top=totalTop+'px';
+    if(mbMap) setTimeout(()=>mbMap.resize(),50);
     refreshMap();
   } else {
     document.getElementById('map').style.top=chromeHeight+'px';
   }
-  if(name==='history')renderHistory();
+  if(name==='history') renderHistory();
 }
-const LAYERS={vwc:{key:'vwc',label:'VWC %',unit:'%',min:0,max:50,stops:[[0,[210,180,140]],[0.5,[100,130,200]],[1.0,[0,31,91]]],gradient:'linear-gradient(to right,#d2b48c,#6482c8,#001f5b)',minLabel:'0% Dry',midLabel:'25%',maxLabel:'50% Sat'},temp:{key:'temp',label:'TEMPERATURE °C',unit:'°C',min:0,max:40,stops:[[0,[0,100,255]],[0.5,[255,200,0]],[1.0,[220,30,0]]],gradient:'linear-gradient(to right,#0064ff,#ffc800,#dc1e00)',minLabel:'0°C',midLabel:'20°C',maxLabel:'40°C'},ec:{key:'ec',label:'ELEC. CONDUCTIVITY',unit:'mS/cm',min:0,max:2,stops:[[0,[220,220,220]],[0.5,[180,80,200]],[1.0,[60,0,100]]],gradient:'linear-gradient(to right,#dcdcdc,#b450c8,#3c0064)',minLabel:'0',midLabel:'1.0',maxLabel:'2.0+'}};
-function lerpColor(stops,t){t=Math.max(0,Math.min(1,t));let s0=stops[0],s1=stops[stops.length-1];for(let i=0;i<stops.length-1;i++){if(t>=stops[i][0]&&t<=stops[i+1][0]){s0=stops[i];s1=stops[i+1];break;}}const span=s1[0]-s0[0]||1,f=(t-s0[0])/span;return`rgb(${Math.round(s0[1][0]+(s1[1][0]-s0[1][0])*f)},${Math.round(s0[1][1]+(s1[1][1]-s0[1][1])*f)},${Math.round(s0[1][2]+(s1[1][2]-s0[1][2])*f)})`;}
-function getLayerColor(layer,value){const v=parseFloat(value);if(isNaN(v))return'#4a6b4a';const cfg=LAYERS[layer];return lerpColor(cfg.stops,(v-cfg.min)/(cfg.max-cfg.min));}
-function updateLegend(){const cfg=LAYERS[activeLayer];document.getElementById('legendTitle').textContent=cfg.label;document.getElementById('legendGradient').style.background=cfg.gradient;document.getElementById('legendMin').textContent=cfg.minLabel;document.getElementById('legendMid').textContent=cfg.midLabel;document.getElementById('legendMax').textContent=cfg.maxLabel;}
-function setLayer(layer){activeLayer=layer;['vwc','temp','ec'].forEach(l=>{const el=document.getElementById('layer'+l.charAt(0).toUpperCase()+l.slice(1));if(el)el.classList.toggle('active',l===layer);});updateLegend();refreshMap();}
+
+// ── Mapbox ────────────────────────────────────────────────────────────────────
+const LAYERS={
+  vwc:{key:'vwc',label:'VWC %',unit:'%',min:0,max:50,
+    stops:[[0,[210,180,140]],[0.5,[100,130,200]],[1.0,[0,31,91]]],
+    gradient:'linear-gradient(to right,#d2b48c,#6482c8,#001f5b)',
+    minLabel:'0% Dry',midLabel:'25%',maxLabel:'50% Sat'},
+  temp:{key:'temp',label:'TEMPERATURE °C',unit:'°C',min:0,max:40,
+    stops:[[0,[0,100,255]],[0.5,[255,200,0]],[1.0,[220,30,0]]],
+    gradient:'linear-gradient(to right,#0064ff,#ffc800,#dc1e00)',
+    minLabel:'0°C',midLabel:'20°C',maxLabel:'40°C'},
+  ec:{key:'ec',label:'ELEC. CONDUCTIVITY',unit:'mS/cm',min:0,max:2,
+    stops:[[0,[220,220,220]],[0.5,[180,80,200]],[1.0,[60,0,100]]],
+    gradient:'linear-gradient(to right,#dcdcdc,#b450c8,#3c0064)',
+    minLabel:'0',midLabel:'1.0',maxLabel:'2.0+'},
+};
+
+function lerpColor(stops,t){
+  t=Math.max(0,Math.min(1,t));
+  let s0=stops[0],s1=stops[stops.length-1];
+  for(let i=0;i<stops.length-1;i++){if(t>=stops[i][0]&&t<=stops[i+1][0]){s0=stops[i];s1=stops[i+1];break;}}
+  const span=s1[0]-s0[0]||1,f=(t-s0[0])/span;
+  return`rgb(${Math.round(s0[1][0]+(s1[1][0]-s0[1][0])*f)},${Math.round(s0[1][1]+(s1[1][1]-s0[1][1])*f)},${Math.round(s0[1][2]+(s1[1][2]-s0[1][2])*f)})`;
+}
+function getLayerColor(layer,value){
+  const v=parseFloat(value); if(isNaN(v)) return '#4a6b4a';
+  const cfg=LAYERS[layer]; return lerpColor(cfg.stops,(v-cfg.min)/(cfg.max-cfg.min));
+}
+function updateLegend(){
+  const cfg=LAYERS[activeLayer];
+  document.getElementById('legendTitle').textContent=cfg.label;
+  document.getElementById('legendGradient').style.background=cfg.gradient;
+  document.getElementById('legendMin').textContent=cfg.minLabel;
+  document.getElementById('legendMid').textContent=cfg.midLabel;
+  document.getElementById('legendMax').textContent=cfg.maxLabel;
+}
+function setLayer(layer){
+  activeLayer=layer;
+  ['vwc','temp','ec'].forEach(l=>{
+    const el=document.getElementById('layer'+l.charAt(0).toUpperCase()+l.slice(1));
+    if(el)el.classList.toggle('active',l===layer);
+  });
+  updateLegend(); refreshMap();
+}
+
 function initMap(){
   mapboxgl.accessToken='pk.eyJ1IjoiYmJsYWNrNTEwIiwiYSI6ImNtbThsazdpNzBrMWoycXE1OWVuaGs5MGkifQ.2ly7MxBURBNnrQqtY-V54A';
-  mbMap=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/satellite-streets-v12',center:[-123.035468,49.174798],zoom:15});
+  mbMap=new mapboxgl.Map({
+    container:'map',
+    style:'mapbox://styles/mapbox/satellite-streets-v12',
+    center:[-123.035468,49.174798],
+    zoom:15
+  });
   mbMap.addControl(new mapboxgl.NavigationControl(),'top-right');
   mbMap.addControl(new mapboxgl.ScaleControl({maxWidth:100,unit:'imperial'}),'bottom-left');
   updateLegend();
 }
-function makeMarkerEl(entry){const cfg=LAYERS[activeLayer];const color=getLayerColor(activeLayer,entry[cfg.key]);const v=parseFloat(entry[cfg.key]);const label=isNaN(v)?'?':(activeLayer==='ec'?v.toFixed(2):v.toFixed(0));const el=document.createElement('div');el.style.cssText='width:40px;height:48px;cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));';el.innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48"><path d="M20 2C9 2 2 11 2 20C2 33 20 46 20 46C20 46 38 33 38 20C38 11 31 2 20 2Z" fill="${color}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/><circle cx="20" cy="20" r="11" fill="rgba(0,0,0,0.25)"/><text x="20" y="25" text-anchor="middle" font-family="monospace" font-size="${label.length>3?8:label.length>2?9:11}" font-weight="bold" fill="white">${label}</text></svg>`;return el;}
-function makePopupHtml(e){return`<div style="min-width:160px"><div class="popup-row" style="margin-bottom:8px;border-bottom:1px solid #1e2e1e;padding-bottom:6px"><span class="popup-label">${e.date} ${e.ts}</span></div><div class="popup-row"><span class="popup-label">VWC</span><span class="popup-val" style="color:${getLayerColor('vwc',e.vwc)};font-size:15px;font-weight:bold">${e.vwc}%</span></div><div class="popup-row"><span class="popup-label">TEMP</span><span class="popup-val" style="color:${getLayerColor('temp',e.temp)}">${e.temp}°C</span></div><div class="popup-row"><span class="popup-label">EC</span><span class="popup-val" style="color:${getLayerColor('ec',e.ec)}">${e.ec} mS/cm</span></div><div class="popup-row"><span class="popup-label">SOIL</span><span class="popup-val">${e.soil||'--'}</span></div></div>`;}
+
+function makeMarkerEl(entry){
+  const cfg=LAYERS[activeLayer];
+  const color=getLayerColor(activeLayer,entry[cfg.key]);
+  const v=parseFloat(entry[cfg.key]);
+  const label=isNaN(v)?'?':(activeLayer==='ec'?v.toFixed(2):v.toFixed(0));
+  const el=document.createElement('div');
+  el.style.cssText='width:40px;height:48px;cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));';
+  el.innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48">
+    <path d="M20 2C9 2 2 11 2 20C2 33 20 46 20 46C20 46 38 33 38 20C38 11 31 2 20 2Z" fill="${color}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+    <circle cx="20" cy="20" r="11" fill="rgba(0,0,0,0.25)"/>
+    <text x="20" y="25" text-anchor="middle" font-family="monospace" font-size="${label.length>3?8:label.length>2?9:11}" font-weight="bold" fill="white">${label}</text>
+  </svg>`;
+  return el;
+}
+
+function makePopupHtml(e){
+  return`<div style="min-width:160px">
+    <div class="popup-row" style="margin-bottom:8px;border-bottom:1px solid #1e2e1e;padding-bottom:6px">
+      <span class="popup-label">${e.date} ${e.ts}</span>
+    </div>
+    <div class="popup-row"><span class="popup-label">VWC</span><span class="popup-val" style="color:${getLayerColor('vwc',e.vwc)};font-size:15px;font-weight:bold">${e.vwc}%</span></div>
+    <div class="popup-row"><span class="popup-label">TEMP</span><span class="popup-val" style="color:${getLayerColor('temp',e.temp)}">${e.temp}°C</span></div>
+    <div class="popup-row"><span class="popup-label">EC</span><span class="popup-val" style="color:${getLayerColor('ec',e.ec)}">${e.ec} mS/cm</span></div>
+    <div class="popup-row"><span class="popup-label">SOIL</span><span class="popup-val">${e.soil||'--'}</span></div>
+  </div>`;
+}
+
 function clearMapMarkers(){mapMarkers.forEach(m=>m.remove());mapPopups.forEach(p=>p.remove());mapMarkers=[];mapPopups=[];}
-function plotReadings(readings){let hasGps=false;readings.forEach(e=>{const lp=parseCoord(e.lat),lo=parseCoord(e.lon);if(!lp.decimal||!lo.decimal)return;hasGps=true;const lng=parseFloat(lo.decimal),lat=parseFloat(lp.decimal);const el=makeMarkerEl(e);const marker=new mapboxgl.Marker({element:el,anchor:'bottom'}).setLngLat([lng,lat]).addTo(mbMap);const popup=new mapboxgl.Popup({offset:28,maxWidth:'230px'}).setHTML(makePopupHtml(e));el.addEventListener('click',()=>popup.setLngLat([lng,lat]).addTo(mbMap));mapMarkers.push(marker);mapPopups.push(popup);});return hasGps;}
-function refreshMap(){if(!mbMap)return;clearMapMarkers();let readings=[];if(mapFilter==='session'&&activeSession)readings=activeSession.readings;else if(mapFilter==='all'){if(activeSession)readings=[...activeSession.readings];allSessions.forEach(s=>readings.push(...s.readings));}const hasGps=plotReadings(readings);document.getElementById('mapNoGps').style.display=(!hasGps&&readings.length>0)?'block':'none';}
-function fitMapToMarkers(){if(!mapMarkers.length){showToast('NO MARKERS TO FIT');return;}const bounds=new mapboxgl.LngLatBounds();mapMarkers.forEach(m=>bounds.extend(m.getLngLat()));mbMap.fitBounds(bounds,{padding:80,maxZoom:18});}
+
+function plotReadings(readings){
+  let hasGps=false;
+  readings.forEach(e=>{
+    const lp=parseCoord(e.lat),lo=parseCoord(e.lon);
+    if(!lp.decimal||!lo.decimal)return;
+    hasGps=true;
+    const lng=parseFloat(lo.decimal),lat=parseFloat(lp.decimal);
+    const el=makeMarkerEl(e);
+    const marker=new mapboxgl.Marker({element:el,anchor:'bottom'}).setLngLat([lng,lat]).addTo(mbMap);
+    const popup=new mapboxgl.Popup({offset:28,maxWidth:'230px'}).setHTML(makePopupHtml(e));
+    el.addEventListener('click',()=>popup.setLngLat([lng,lat]).addTo(mbMap));
+    mapMarkers.push(marker);mapPopups.push(popup);
+  });
+  return hasGps;
+}
+
+function refreshMap(){
+  if(!mbMap)return;
+  clearMapMarkers();
+  let readings=[];
+  if(mapFilter==='session'&&activeSession)readings=activeSession.readings;
+  else if(mapFilter==='all'){
+    if(activeSession)readings=[...activeSession.readings];
+    allSessions.forEach(s=>readings.push(...s.readings));
+  }
+  const hasGps=plotReadings(readings);
+  document.getElementById('mapNoGps').style.display=(!hasGps&&readings.length>0)?'block':'none';
+}
+
+function fitMapToMarkers(){
+  if(!mapMarkers.length){showToast('NO MARKERS TO FIT');return;}
+  const bounds=new mapboxgl.LngLatBounds();
+  mapMarkers.forEach(m=>bounds.extend(m.getLngLat()));
+  mbMap.fitBounds(bounds,{padding:80,maxZoom:18});
+}
 function mapFilterSession(){mapFilter='session';document.getElementById('btnSession').classList.add('active');document.getElementById('btnAll').classList.remove('active');refreshMap();}
 function mapFilterAll(){mapFilter='all';document.getElementById('btnAll').classList.add('active');document.getElementById('btnSession').classList.remove('active');refreshMap();}
 function flyToCoord(lat,lng){switchTab('map');setTimeout(()=>mbMap.flyTo({center:[parseFloat(lng),parseFloat(lat)],zoom:18}),300);}
+
+// ── Persistence (localStorage) ────────────────────────────────────────────────
 const STORAGE_KEY='tdr350_sessions_v1';
-function loadSessions(){try{const raw=localStorage.getItem(STORAGE_KEY);if(raw){const p=JSON.parse(raw);allSessions=p.archived||[];activeSession=p.active||null;}}catch(e){allSessions=[];activeSession=null;}}
-function persistSessions(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({active:activeSession,archived:allSessions}));}catch(e){}}
-function setSyncBadge(state){const b=document.getElementById('syncBadge');if(state==='ok'){b.textContent='SYNC ✓';b.className='sync-badge ok';}else if(state==='err'){b.textContent='SYNC !';b.className='sync-badge err';}else{b.textContent='SYNC --';b.className='sync-badge';}}
-async function syncReadingToCloud(entry,sessionLabel){try{const{error}=await supa.from('readings').insert({session_label:sessionLabel,ts:entry.ts,date:entry.date,vwc:parseFloat(entry.vwc)||null,temp:parseFloat(entry.temp)||null,ec:parseFloat(entry.ec)||null,lat_decimal:parseCoord(entry.lat).decimal?parseFloat(parseCoord(entry.lat).decimal):null,lon_decimal:parseCoord(entry.lon).decimal?parseFloat(parseCoord(entry.lon).decimal):null,lat_nmea:entry.lat||null,lon_nmea:entry.lon||null,soil:entry.soil||null,period:entry.period||null});if(error)throw error;setSyncBadge('ok');}catch(e){console.warn('Supabase sync failed:',e.message);setSyncBadge('err');}}
-async function loadCloudSessions(){try{const{data,error}=await supa.from('readings').select('*').order('date',{ascending:false}).order('ts',{ascending:false});if(error)throw error;setSyncBadge('ok');const groups={};data.forEach(r=>{const key=r.session_label;if(!groups[key])groups[key]={id:'cloud_'+key,date:r.date,label:key,readings:[],_cloud:true};groups[key].readings.push({ts:r.ts,date:r.date,vwc:r.vwc!=null?String(r.vwc):'--',temp:r.temp!=null?String(r.temp):'--',ec:r.ec!=null?String(r.ec):'--',lat:r.lat_nmea||'--',lon:r.lon_nmea||'--',soil:r.soil||'--',period:r.period||'--'});});return Object.values(groups);}catch(e){console.warn('Cloud load failed:',e.message);setSyncBadge('err');return[];}}
+function loadSessions(){
+  try{const raw=localStorage.getItem(STORAGE_KEY);if(raw){const p=JSON.parse(raw);allSessions=p.archived||[];activeSession=p.active||null;}}
+  catch(e){allSessions=[];activeSession=null;}
+}
+function persistSessions(){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({active:activeSession,archived:allSessions}));}catch(e){}
+}
+
+// ── Supabase sync ─────────────────────────────────────────────────────────────
+function setSyncBadge(state){
+  const b=document.getElementById('syncBadge');
+  if(state==='ok'){b.textContent='SYNC ✓';b.className='sync-badge ok';}
+  else if(state==='err'){b.textContent='SYNC !';b.className='sync-badge err';}
+  else{b.textContent='SYNC --';b.className='sync-badge';}
+}
+
+async function syncReadingToCloud(entry,sessionLabel){
+  try{
+    const{error}=await supa.from('readings').insert({
+      session_label:sessionLabel,
+      ts:entry.ts,
+      date:entry.date,
+      vwc:parseFloat(entry.vwc)||null,
+      temp:parseFloat(entry.temp)||null,
+      ec:parseFloat(entry.ec)||null,
+      lat_decimal:parseCoord(entry.lat).decimal?parseFloat(parseCoord(entry.lat).decimal):null,
+      lon_decimal:parseCoord(entry.lon).decimal?parseFloat(parseCoord(entry.lon).decimal):null,
+      lat_nmea:entry.lat||null,
+      lon_nmea:entry.lon||null,
+      soil:entry.soil||null,
+      period:entry.period||null,
+    });
+    if(error)throw error;
+    setSyncBadge('ok');
+  }catch(e){
+    console.warn('Supabase sync failed:',e.message);
+    setSyncBadge('err');
+  }
+}
+
+async function loadCloudSessions(){
+  try{
+    const{data,error}=await supa.from('readings').select('*').order('date',{ascending:false}).order('ts',{ascending:false});
+    if(error)throw error;
+    setSyncBadge('ok');
+    // Group by session_label
+    const groups={};
+    data.forEach(r=>{
+      const key=r.session_label;
+      if(!groups[key])groups[key]={id:'cloud_'+key,date:r.date,label:key,readings:[],_cloud:true};
+      groups[key].readings.push({
+        ts:r.ts,date:r.date,
+        vwc:r.vwc!=null?String(r.vwc):'--',
+        temp:r.temp!=null?String(r.temp):'--',
+        ec:r.ec!=null?String(r.ec):'--',
+        lat:r.lat_nmea||'--',lon:r.lon_nmea||'--',
+        soil:r.soil||'--',period:r.period||'--',
+      });
+    });
+    return Object.values(groups);
+  }catch(e){
+    console.warn('Cloud load failed:',e.message);
+    setSyncBadge('err');
+    return[];
+  }
+}
+
+// ── Session management ────────────────────────────────────────────────────────
 function makeLabel(d){return d.toLocaleDateString('en-US',{weekday:'short',year:'numeric',month:'short',day:'numeric'});}
 function makeId(d){return'sess_'+d.getTime();}
-function confirmNewSession(){const msg=document.getElementById('confirmMsg');if(activeSession&&activeSession.readings.length>0)msg.innerHTML=`Save <strong>${activeSession.label}</strong> (${activeSession.readings.length} reading${activeSession.readings.length!==1?'s':''}) and start a new session?`;else if(activeSession)msg.innerHTML=`Current session has no readings. Start new session?`;else msg.innerHTML=`Start a new session for today?`;document.getElementById('confirmOverlay').classList.add('open');}
+
+function confirmNewSession(){
+  const msg=document.getElementById('confirmMsg');
+  if(activeSession&&activeSession.readings.length>0)
+    msg.innerHTML=`Save <strong>${activeSession.label}</strong> (${activeSession.readings.length} reading${activeSession.readings.length!==1?'s':''}) and start a new session?`;
+  else if(activeSession)
+    msg.innerHTML=`Current session has no readings and will be discarded. Start new session?`;
+  else msg.innerHTML=`Start a new session for today?`;
+  document.getElementById('confirmOverlay').classList.add('open');
+}
 function closeConfirm(){document.getElementById('confirmOverlay').classList.remove('open');}
-function startNewSession(){closeConfirm();if(activeSession&&activeSession.readings.length>0){allSessions.unshift(activeSession);showToast('SESSION SAVED // '+activeSession.label);}const now=new Date();activeSession={id:makeId(now),date:now.toISOString(),label:makeLabel(now),readings:[]};persistSessions();lastAutoSaveValue=null;lastAutoSaveTime=0;if(saveTimer){clearTimeout(saveTimer);saveTimer=null;}renderCurrentLog();updateSessionBanner();if(currentTab==='map')refreshMap();showToast('NEW SESSION STARTED');}
-function updateSessionBanner(){const el=document.getElementById('sessionName'),ct=document.getElementById('sessionCount');if(activeSession){const n=activeSession.readings.length;el.innerHTML=activeSession.label+` <span>// ${n} reading${n!==1?'s':''}</span>`;ct.textContent=n;}else{el.innerHTML='NO ACTIVE SESSION <span>— TAP NEW SESSION</span>';ct.textContent='0';}}
-function autoSaveReading(){if(!activeSession)return;const vwc=currentData.vwc;if(!vwc||isNaN(parseFloat(vwc)))return;const now=Date.now();if(vwc===lastAutoSaveValue&&(now-lastAutoSaveTime)<5000)return;if(saveTimer)clearTimeout(saveTimer);setStatus('READING RECEIVED — COLLECTING DATA...','connecting');saveTimer=setTimeout(()=>{saveTimer=null;commitSave();},2000);}
-function commitSave(){if(!activeSession)return;const d=new Date();const entry={ts:d.toTimeString().slice(0,8),date:d.toLocaleDateString(),vwc:currentData.vwc||'--',temp:currentData.temp||'--',ec:currentData.ec||'--',lat:currentData.lat||'--',lon:currentData.lon||'--',soil:currentData.soil||'--',period:currentData.period||'--'};lastAutoSaveValue=currentData.vwc;lastAutoSaveTime=Date.now();activeSession.readings.unshift(entry);persistSessions();syncReadingToCloud(entry,activeSession.label);renderCurrentLog();updateSessionBanner();setStatus('CONNECTED // LIVE DATA','online');if(currentTab==='map')refreshMap();showToast('SAVED // VWC:'+entry.vwc+'% TEMP:'+entry.temp+'° GPS:'+(entry.lat!=='--'?'✓':'--'));}
-function manualSave(){if(!activeSession){showToast('START A SESSION FIRST');return;}if(!currentData.vwc||isNaN(parseFloat(currentData.vwc))){showToast('NO READING TO SAVE');return;}if(saveTimer){clearTimeout(saveTimer);saveTimer=null;}lastAutoSaveValue=null;commitSave();}
-function renderLogRow(e,clickable=false){const lp=parseCoord(e.lat),lo=parseCoord(e.lon);const loc=lp.decimal&&lo.decimal?lp.decimal+','+lo.decimal:'--';const locClick=clickable&&lp.decimal&&lo.decimal?`onclick="flyToCoord('${lp.decimal}','${lo.decimal}')" title="View on map"`:'';return`<div class="log-entry"><span class="ts">${e.ts}</span><span class="vwc">${e.vwc}%</span><span class="temp">${e.temp}°</span><span class="ec">${e.ec}</span><span class="loc" ${locClick}>${loc}</span></div>`;}
-function renderCurrentLog(){const container=document.getElementById('logEntries'),countEl=document.getElementById('logCount');if(!activeSession){container.innerHTML='<div class="log-empty">NO ACTIVE SESSION</div>';countEl.textContent='';return;}if(!activeSession.readings.length){container.innerHTML='<div class="log-empty">NO READINGS YET — INSERT PROBE TO AUTO-SAVE</div>';countEl.textContent='';return;}countEl.textContent='('+activeSession.readings.length+')';container.innerHTML=activeSession.readings.map(e=>renderLogRow(e,true)).join('');}
-async function renderHistory(){const body=document.getElementById('historyBody');body.innerHTML='<div class="no-sessions" style="color:var(--text-dim)">LOADING...</div>';const cloudSessions=await loadCloudSessions();const display=[];if(activeSession&&activeSession.readings.length>0)display.push({...activeSession,_active:true});cloudSessions.forEach(cs=>{if(!display.find(d=>d.label===cs.label))display.push(cs);});allSessions.forEach(ls=>{if(!display.find(d=>d.label===ls.label))display.push(ls);});if(!display.length){body.innerHTML='<div class="no-sessions">NO SESSIONS SAVED YET</div>';return;}body.innerHTML=display.map(s=>{const valid=s.readings.filter(r=>!isNaN(parseFloat(r.vwc)));const avg=valid.length?(valid.reduce((a,r)=>a+parseFloat(r.vwc),0)/valid.length).toFixed(1):'--';const activeTag=s._active?' <span style="color:var(--green);font-size:9px">● ACTIVE</span>':'';const cloudTag=s._cloud?' <span style="color:var(--text-dim);font-size:9px">☁</span>':'';const delBtn=!s._active&&!s._cloud?`<button class="session-action-btn del" onclick="event.stopPropagation();deleteSession('${s.id}')">DEL</button>`:'';return`<div class="session-card"><div class="session-card-header" onclick="toggleRows('${s.id}')"><div><div class="session-card-date">${s.label}${activeTag}${cloudTag}</div><div class="session-card-meta">${s.readings.length} READING${s.readings.length!==1?'S':''} · AVG VWC: ${avg}%</div></div><div class="session-card-actions" onclick="event.stopPropagation()"><button class="session-action-btn map-btn" onclick="viewSessionOnMap('${s.id}',${JSON.stringify(s.readings)})">MAP</button><button class="session-action-btn export" onclick="exportSessionReadings(${JSON.stringify(s.readings)},'${s.label}')">CSV</button>${delBtn}</div></div><div class="session-card-rows" id="rows_${s.id}"><div class="log-col-headers"><span>TIME</span><span>VWC%</span><span>TEMP</span><span>EC</span><span>LOCATION</span></div><div class="log-entries">${s.readings.length?s.readings.map(e=>renderLogRow(e,true)).join(''):'<div class="log-empty">NO READINGS</div>'}</div></div></div>`;}).join('');}
+
+function startNewSession(){
+  closeConfirm();
+  if(activeSession&&activeSession.readings.length>0){allSessions.unshift(activeSession);showToast('SESSION SAVED // '+activeSession.label);}
+  const now=new Date();
+  activeSession={id:makeId(now),date:now.toISOString(),label:makeLabel(now),readings:[]};
+  persistSessions();lastAutoSaveValue=null;lastAutoSaveTime=0;
+  if(saveTimer){clearTimeout(saveTimer);saveTimer=null;}
+  renderCurrentLog();updateSessionBanner();
+  if(currentTab==='map')refreshMap();
+  showToast('NEW SESSION STARTED');
+}
+
+function updateSessionBanner(){
+  const el=document.getElementById('sessionName'),ct=document.getElementById('sessionCount');
+  if(activeSession){const n=activeSession.readings.length;el.innerHTML=activeSession.label+` <span>// ${n} reading${n!==1?'s':''}</span>`;ct.textContent=n;}
+  else{el.innerHTML='NO ACTIVE SESSION <span>— TAP NEW SESSION</span>';ct.textContent='0';}
+}
+
+// ── Autosave ──────────────────────────────────────────────────────────────────
+function autoSaveReading(){
+  if(!activeSession)return;
+  const vwc=currentData.vwc;
+  if(!vwc||isNaN(parseFloat(vwc)))return;
+  const now=Date.now();
+  if(vwc===lastAutoSaveValue&&(now-lastAutoSaveTime)<5000)return;
+  if(saveTimer)clearTimeout(saveTimer);
+  // 5 second buffer — gives GPS and other characteristics time to report in
+  let remaining=5;
+  setStatus('READING RECEIVED — SAVING IN '+remaining+'s...','connecting');
+  const countdown=setInterval(()=>{
+    remaining--;
+    if(remaining>0) setStatus('COLLECTING DATA — SAVING IN '+remaining+'s...','connecting');
+    else clearInterval(countdown);
+  },1000);
+  saveTimer=setTimeout(()=>{saveTimer=null;clearInterval(countdown);commitSave();},5000);
+}
+
+function commitSave(){
+  if(!activeSession)return;
+  const d=new Date();
+  const entry={
+    ts:d.toTimeString().slice(0,8),date:d.toLocaleDateString(),
+    vwc:currentData.vwc||'--',temp:currentData.temp||'--',
+    ec:currentData.ec||'--',lat:currentData.lat||'--',
+    lon:currentData.lon||'--',soil:currentData.soil||'--',period:currentData.period||'--',
+  };
+  lastAutoSaveValue=currentData.vwc;lastAutoSaveTime=Date.now();
+  activeSession.readings.unshift(entry);
+  persistSessions();
+  syncReadingToCloud(entry,activeSession.label);
+  renderCurrentLog();updateSessionBanner();
+  setStatus('CONNECTED // LIVE DATA','online');
+  if(currentTab==='map')refreshMap();
+  const gpsOk=entry.lat!=='--'&&entry.lon!=='--';
+  const tempOk=entry.temp!=='--';
+  const ecOk=entry.ec!=='--';
+  showToast('SAVED // VWC:'+entry.vwc+'% '+(tempOk?'T:'+entry.temp+'°':'')+' GPS:'+(gpsOk?'✓':'✗')+' EC:'+(ecOk?'✓':'✗'));
+}
+
+function manualSave(){
+  if(!activeSession){showToast('START A SESSION FIRST');return;}
+  if(!currentData.vwc||isNaN(parseFloat(currentData.vwc))){showToast('NO READING TO SAVE');return;}
+  if(saveTimer){clearTimeout(saveTimer);saveTimer=null;}
+  lastAutoSaveValue=null;commitSave();
+}
+
+// ── Log rendering ─────────────────────────────────────────────────────────────
+function renderLogRow(e,clickable=false){
+  const lp=parseCoord(e.lat),lo=parseCoord(e.lon);
+  const loc=lp.decimal&&lo.decimal?lp.decimal+','+lo.decimal:'--';
+  const locClick=clickable&&lp.decimal&&lo.decimal?`onclick="flyToCoord('${lp.decimal}','${lo.decimal}')" title="View on map"`:'';
+  return`<div class="log-entry"><span class="ts">${e.ts}</span><span class="vwc">${e.vwc}%</span><span class="temp">${e.temp}°</span><span class="ec">${e.ec}</span><span class="loc" ${locClick}>${loc}</span></div>`;
+}
+
+function renderCurrentLog(){
+  const container=document.getElementById('logEntries'),countEl=document.getElementById('logCount');
+  if(!activeSession){container.innerHTML='<div class="log-empty">NO ACTIVE SESSION</div>';countEl.textContent='';return;}
+  if(!activeSession.readings.length){container.innerHTML='<div class="log-empty">NO READINGS YET — INSERT PROBE TO AUTO-SAVE</div>';countEl.textContent='';return;}
+  countEl.textContent='('+activeSession.readings.length+')';
+  container.innerHTML=activeSession.readings.map(e=>renderLogRow(e,true)).join('');
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function renderHistory(){
+  const body=document.getElementById('historyBody');
+  body.innerHTML='<div class="no-sessions" style="color:var(--text-dim)">LOADING...</div>';
+  const cloudSessions=await loadCloudSessions();
+  // Merge local + cloud (cloud is source of truth for shared data)
+  const display=[];
+  if(activeSession&&activeSession.readings.length>0)display.push({...activeSession,_active:true});
+  // Show cloud sessions (all users)
+  cloudSessions.forEach(cs=>{
+    if(!display.find(d=>d.label===cs.label))display.push(cs);
+  });
+  // Add any local-only sessions not yet in cloud
+  allSessions.forEach(ls=>{if(!display.find(d=>d.label===ls.label))display.push(ls);});
+
+  if(!display.length){body.innerHTML='<div class="no-sessions">NO SESSIONS SAVED YET</div>';return;}
+
+  body.innerHTML=display.map(s=>{
+    const valid=s.readings.filter(r=>!isNaN(parseFloat(r.vwc)));
+    const avg=valid.length?(valid.reduce((a,r)=>a+parseFloat(r.vwc),0)/valid.length).toFixed(1):'--';
+    const activeTag=s._active?' <span style="color:var(--green);font-size:9px">● ACTIVE</span>':'';
+    const cloudTag=s._cloud?' <span style="color:var(--text-dim);font-size:9px">☁</span>':'';
+    const delBtn=!s._active&&!s._cloud?`<button class="session-action-btn del" onclick="event.stopPropagation();deleteSession('${s.id}')">DEL</button>`:'';
+    return`<div class="session-card">
+      <div class="session-card-header" onclick="toggleRows('${s.id}')">
+        <div>
+          <div class="session-card-date">${s.label}${activeTag}${cloudTag}</div>
+          <div class="session-card-meta">${s.readings.length} READING${s.readings.length!==1?'S':''} · AVG VWC: ${avg}%</div>
+        </div>
+        <div class="session-card-actions" onclick="event.stopPropagation()">
+          <button class="session-action-btn map-btn" onclick="viewSessionOnMap('${s.id}',${JSON.stringify(s.readings)})">MAP</button>
+          <button class="session-action-btn export" onclick="exportSessionReadings(${JSON.stringify(s.readings)},'${s.label}')">CSV</button>
+          ${delBtn}
+        </div>
+      </div>
+      <div class="session-card-rows" id="rows_${s.id}">
+        <div class="log-col-headers"><span>TIME</span><span>VWC%</span><span>TEMP</span><span>EC</span><span>LOCATION</span></div>
+        <div class="log-entries">${s.readings.length?s.readings.map(e=>renderLogRow(e,true)).join(''):'<div class="log-empty">NO READINGS</div>'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function toggleRows(id){const el=document.getElementById('rows_'+id);if(el)el.classList.toggle('open');}
-function viewSessionOnMap(id,readings){switchTab('map');setTimeout(()=>{clearMapMarkers();const hasGps=plotReadings(readings);if(hasGps)fitMapToMarkers();else showToast('NO GPS DATA IN THIS SESSION');},300);}
-function deleteSession(id){if(!confirm('Delete this session?'))return;allSessions=allSessions.filter(s=>s.id!==id);persistSessions();renderHistory();showToast('SESSION DELETED');}
-function buildCSV(readings){const hdr='Date,Time,VWC%,Temperature_C,EC_mS_cm,Latitude_NMEA,Longitude_NMEA,Lat_Decimal,Lon_Decimal,Soil_Type,Period_us\n';return hdr+readings.map(e=>{const ld=parseCoord(e.lat).decimal||'',lo=parseCoord(e.lon).decimal||'';return[e.date,e.ts,e.vwc,e.temp,e.ec,e.lat,e.lon,ld,lo,e.soil,e.period].join(',');}).join('\n');}
-function downloadCSV(csv,name){const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:name});a.click();URL.revokeObjectURL(a.href);}
-function exportCurrentCSV(){if(!activeSession||!activeSession.readings.length){showToast('NO DATA TO EXPORT');return;}downloadCSV(buildCSV(activeSession.readings),'tdr350_'+new Date(activeSession.date).toISOString().slice(0,10)+'.csv');showToast('CSV EXPORTED ('+activeSession.readings.length+' READINGS)');}
-function exportSessionReadings(readings,label){downloadCSV(buildCSV(readings),'tdr350_'+label.replace(/[^a-z0-9]/gi,'_')+'.csv');showToast('CSV EXPORTED ('+readings.length+' READINGS)');}
-function setStatus(text,state=''){document.getElementById('statusText').textContent=text.toUpperCase();document.getElementById('statusDot').className='status-dot'+(state?' '+state:'');}
-function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
-function updateConnectBtn(state){const b=document.getElementById('connectBtn');if(state==='connecting'){b.textContent='CONNECTING...';b.className='connect-btn connecting';}else if(state==='connected'){b.textContent='DISCONNECT';b.className='connect-btn connected';}else{b.textContent='CONNECT';b.className='connect-btn';}}
+
+function viewSessionOnMap(id,readings){
+  switchTab('map');
+  setTimeout(()=>{
+    clearMapMarkers();
+    let hasGps=plotReadings(readings);
+    if(hasGps)fitMapToMarkers();
+    else showToast('NO GPS DATA IN THIS SESSION');
+  },300);
+}
+
+function deleteSession(id){
+  if(!confirm('Delete this session?'))return;
+  allSessions=allSessions.filter(s=>s.id!==id);
+  persistSessions();renderHistory();showToast('SESSION DELETED');
+}
+
+// ── CSV ───────────────────────────────────────────────────────────────────────
+function buildCSV(readings){
+  const hdr='Date,Time,VWC%,Temperature_C,EC_mS_cm,Latitude_NMEA,Longitude_NMEA,Lat_Decimal,Lon_Decimal,Soil_Type,Period_us\n';
+  return hdr+readings.map(e=>{
+    const ld=parseCoord(e.lat).decimal||'',lo=parseCoord(e.lon).decimal||'';
+    return[e.date,e.ts,e.vwc,e.temp,e.ec,e.lat,e.lon,ld,lo,e.soil,e.period].join(',');
+  }).join('\n');
+}
+function downloadCSV(csv,name){
+  const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:name});
+  a.click();URL.revokeObjectURL(a.href);
+}
+function exportCurrentCSV(){
+  if(!activeSession||!activeSession.readings.length){showToast('NO DATA TO EXPORT');return;}
+  downloadCSV(buildCSV(activeSession.readings),'tdr350_'+new Date(activeSession.date).toISOString().slice(0,10)+'.csv');
+  showToast('CSV EXPORTED ('+activeSession.readings.length+' READINGS)');
+}
+function exportSessionReadings(readings,label){
+  downloadCSV(buildCSV(readings),'tdr350_'+label.replace(/[^a-z0-9]/gi,'_')+'.csv');
+  showToast('CSV EXPORTED ('+readings.length+' READINGS)');
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function setStatus(text,state=''){
+  document.getElementById('statusText').textContent=text.toUpperCase();
+  document.getElementById('statusDot').className='status-dot'+(state?' '+state:'');
+}
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+function updateConnectBtn(state){
+  const b=document.getElementById('connectBtn');
+  if(state==='connecting'){b.textContent='CONNECTING...';b.className='connect-btn connecting';}
+  else if(state==='connected'){b.textContent='DISCONNECT';b.className='connect-btn connected';}
+  else{b.textContent='CONNECT';b.className='connect-btn';}
+}
+
+// ── Decode ────────────────────────────────────────────────────────────────────
 function decodeAscii(v){return new TextDecoder().decode(v).trim();}
-function nmeaToDecimal(nmea,dir){const d=nmea.indexOf('.');if(d<0)return null;let dec=parseFloat(nmea.substring(0,d-2))+parseFloat(nmea.substring(d-2))/60;if(dir==='S'||dir==='W')dec=-dec;return dec.toFixed(6);}
-function parseCoord(raw){if(!raw||raw==='--')return{decimal:null};const p=raw.split(',');if(p.length<2)return{decimal:null};return{decimal:nmeaToDecimal(p[0],p[1])};}
-function updateUI(key,raw){currentData[key]=raw;if(key==='vwc'){const v=parseFloat(raw);const el=document.getElementById('vwcValue');el.textContent=isNaN(v)?raw:v.toFixed(1);el.classList.add('updated');setTimeout(()=>el.classList.remove('updated'),500);if(!isNaN(v))document.getElementById('moistureBar').style.width=Math.min(100,(v/50)*100)+'%';if(activeSession&&!isNaN(v))autoSaveReading();}if(key==='temp')document.getElementById('tempValue').textContent=isNaN(parseFloat(raw))?raw:parseFloat(raw).toFixed(1);if(key==='ec')document.getElementById('ecValue').textContent=raw;if(key==='soil')document.getElementById('soilValue').textContent=({S:'SAND',C:'CLAY',N:'STD'}[raw]||raw);if(key==='period')document.getElementById('periodValue').textContent=raw;if(key==='lat'){document.getElementById('gpsLat').textContent=raw;updateDecimalGPS();}if(key==='lon'){document.getElementById('gpsLon').textContent=raw;updateDecimalGPS();}}
-function updateDecimalGPS(){const lp=parseCoord(currentData.lat),lo=parseCoord(currentData.lon);if(lp.decimal&&lo.decimal)document.getElementById('gpsDecimal').textContent=lp.decimal+', '+lo.decimal;}
-async function subscribeChar(svc,uuid,key){try{const c=await svc.getCharacteristic(uuid);updateUI(key,decodeAscii(await c.readValue()));if(c.properties.indicate||c.properties.notify){await c.startNotifications();c.addEventListener('characteristicvaluechanged',e=>updateUI(key,decodeAscii(e.target.value)));}}catch(e){console.warn('Could not subscribe to',key,e.message);}}
-async function handleConnect(){if(connected){disconnect();return;}if(!navigator.bluetooth){showToast('USE CHROME ON ANDROID');setStatus('WEB BLUETOOTH NOT AVAILABLE','error');return;}try{updateConnectBtn('connecting');setStatus('SCANNING FOR TDR-350...','connecting');device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'TDR'}],optionalServices:[SERVICE_UUID,BATTERY_SERVICE]});device.addEventListener('gattserverdisconnected',onDisconnected);document.getElementById('deviceName').textContent=device.name||'TDR-350';setStatus('CONNECTING TO '+(device.name||'TDR-350')+'...','connecting');server=await device.gatt.connect();bleService=await server.getPrimaryService(SERVICE_UUID);for(const[key,uuid]of Object.entries(CHARS))await subscribeChar(bleService,uuid,key);try{const bs=await server.getPrimaryService(BATTERY_SERVICE);const bc=await bs.getCharacteristic(BATTERY_CHAR);document.getElementById('battValue').textContent=(await bc.readValue()).getUint8(0)+'%';}catch(e){}connected=true;updateConnectBtn('connected');setStatus('CONNECTED // '+(device.name||'TDR-350')+' // LIVE DATA','online');showToast('CONNECTED TO '+(device.name||'TDR-350'));}catch(e){updateConnectBtn('');setStatus(e.name==='NotFoundError'?'NO DEVICE SELECTED':'CONNECTION FAILED: '+e.message,e.name==='NotFoundError'?'':'error');if(e.name!=='NotFoundError')showToast('CONNECTION FAILED');}}
+function nmeaToDecimal(nmea,dir){
+  const d=nmea.indexOf('.');if(d<0)return null;
+  let dec=parseFloat(nmea.substring(0,d-2))+parseFloat(nmea.substring(d-2))/60;
+  if(dir==='S'||dir==='W')dec=-dec;return dec.toFixed(6);
+}
+function parseCoord(raw){
+  if(!raw||raw==='--')return{decimal:null};
+  const p=raw.split(',');if(p.length<2)return{decimal:null};
+  return{decimal:nmeaToDecimal(p[0],p[1])};
+}
+
+// ── Live readings ─────────────────────────────────────────────────────────────
+function updateUI(key,raw){
+  currentData[key]=raw;
+  if(key==='vwc'){
+    const v=parseFloat(raw);
+    const el=document.getElementById('vwcValue');
+    el.textContent=isNaN(v)?raw:v.toFixed(1);
+    el.classList.add('updated');setTimeout(()=>el.classList.remove('updated'),500);
+    if(!isNaN(v))document.getElementById('moistureBar').style.width=Math.min(100,(v/50)*100)+'%';
+    if(activeSession&&!isNaN(v))autoSaveReading();
+  }
+  if(key==='temp')document.getElementById('tempValue').textContent=isNaN(parseFloat(raw))?raw:parseFloat(raw).toFixed(1);
+  if(key==='ec')document.getElementById('ecValue').textContent=raw;
+  if(key==='soil')document.getElementById('soilValue').textContent=({S:'SAND',C:'CLAY',N:'STD'}[raw]||raw);
+  if(key==='period')document.getElementById('periodValue').textContent=raw;
+  if(key==='lat'){document.getElementById('gpsLat').textContent=raw;updateDecimalGPS();}
+  if(key==='lon'){document.getElementById('gpsLon').textContent=raw;updateDecimalGPS();}
+}
+function updateDecimalGPS(){
+  const lp=parseCoord(currentData.lat),lo=parseCoord(currentData.lon);
+  if(lp.decimal&&lo.decimal)document.getElementById('gpsDecimal').textContent=lp.decimal+', '+lo.decimal;
+}
+
+// ── BLE ───────────────────────────────────────────────────────────────────────
+async function subscribeChar(svc,uuid,key){
+  try{
+    const c=await svc.getCharacteristic(uuid);
+    updateUI(key,decodeAscii(await c.readValue()));
+    if(c.properties.indicate||c.properties.notify){
+      await c.startNotifications();
+      c.addEventListener('characteristicvaluechanged',e=>updateUI(key,decodeAscii(e.target.value)));
+    }
+  }catch(e){console.warn('Could not subscribe to',key,e.message);}
+}
+async function handleConnect(){
+  if(connected){disconnect();return;}
+  if(!navigator.bluetooth){showToast('USE CHROME ON ANDROID');setStatus('WEB BLUETOOTH NOT AVAILABLE','error');return;}
+  try{
+    updateConnectBtn('connecting');setStatus('SCANNING FOR TDR-350...','connecting');
+    device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'TDR'}],optionalServices:[SERVICE_UUID,BATTERY_SERVICE]});
+    device.addEventListener('gattserverdisconnected',onDisconnected);
+    document.getElementById('deviceName').textContent=device.name||'TDR-350';
+    setStatus('CONNECTING TO '+(device.name||'TDR-350')+'...','connecting');
+    server=await device.gatt.connect();
+    bleService=await server.getPrimaryService(SERVICE_UUID);
+    for(const[key,uuid]of Object.entries(CHARS))await subscribeChar(bleService,uuid,key);
+    try{
+      const bs=await server.getPrimaryService(BATTERY_SERVICE);
+      const bc=await bs.getCharacteristic(BATTERY_CHAR);
+      document.getElementById('battValue').textContent=(await bc.readValue()).getUint8(0)+'%';
+    }catch(e){}
+    connected=true;updateConnectBtn('connected');
+    setStatus('CONNECTED // '+(device.name||'TDR-350')+' // LIVE DATA','online');
+    showToast('CONNECTED TO '+(device.name||'TDR-350'));
+  }catch(e){
+    updateConnectBtn('');
+    setStatus(e.name==='NotFoundError'?'NO DEVICE SELECTED':'CONNECTION FAILED: '+e.message,e.name==='NotFoundError'?'':'error');
+    if(e.name!=='NotFoundError')showToast('CONNECTION FAILED');
+  }
+}
 function onDisconnected(){connected=false;updateConnectBtn('');setStatus('DEVICE DISCONNECTED','error');showToast('DEVICE DISCONNECTED');}
 function disconnect(){if(device&&device.gatt.connected)device.gatt.disconnect();connected=false;updateConnectBtn('');setStatus('DISCONNECTED','');}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('load',()=>{
   loadSessions();updateSessionBanner();renderCurrentLog();
   if(!navigator.bluetooth){setStatus('WEB BLUETOOTH NOT AVAILABLE — USE CHROME ON ANDROID','error');document.getElementById('connectBtn').disabled=true;}
+  // Layout then init map
   layoutViews();
   initMap();
+  // Re-layout on resize (orientation change)
   window.addEventListener('resize',layoutViews);
 });
 </script>
