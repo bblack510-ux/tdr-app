@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>TDR 350 Field Scout v1.9.3</title>
+<title>TDR 350 Field Scout v1.9.4</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
@@ -191,7 +191,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <div class="header">
     <div>
       <div class="header-title">FIELD SCOUT</div>
-      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.3</div>
+      <div class="header-sub">TDR-350 // SPECTRUM TECH // v1.9.4</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="sync-badge" id="syncBadge">SYNC --</span>
@@ -454,23 +454,109 @@ function initMap(){
   updateLegend();
 }
 
-function makeMarkerEl(entry){
-  const cfg=LAYERS[activeLayer];
-  const color=getLayerColor(activeLayer,entry[cfg.key]);
-  const v=parseFloat(entry[cfg.key]);
-  const label=isNaN(v)?'?':(activeLayer==='ec'?v.toFixed(2):v.toFixed(0));
-  const el=document.createElement('div');
-  el.style.cssText='width:40px;height:48px;cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));';
-  el.innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48">
-    <path d="M20 2C9 2 2 11 2 20C2 33 20 46 20 46C20 46 38 33 38 20C38 11 31 2 20 2Z" fill="${color}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
-    <circle cx="20" cy="20" r="11" fill="rgba(0,0,0,0.25)"/>
-    <text x="20" y="25" text-anchor="middle" font-family="monospace" font-size="${label.length>3?8:label.length>2?9:11}" font-weight="bold" fill="white">${label}</text>
-  </svg>`;
-  return el;
+// ── IDW interpolation heatmap ─────────────────────────────────────────────────
+// Each reading radiates a gradient. Overlapping areas average via inverse-distance
+// weighting so a 14% and 17% reading blend proportionally in between.
+
+const HEATMAP_RADIUS_METERS = 8; // radial spread of each reading in metres
+
+// Convert metres to degrees (approximate, good enough at golf course scale)
+function metersToDeg(metres, lat) {
+  const latDeg = metres / 111320;
+  const lngDeg = metres / (111320 * Math.cos(lat * Math.PI / 180));
+  return { latDeg, lngDeg };
 }
 
-function makePopupHtml(e){
-  return`<div style="min-width:160px">
+// IDW: given a point, compute weighted average value from all readings
+function idwValue(px, py, points, power=2) {
+  let wSum = 0, vSum = 0;
+  for (const p of points) {
+    const dx = px - p.x, dy = py - p.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 1e-10) return p.v; // exactly on a point
+    const w = 1 / Math.pow(dist, power);
+    wSum += w;
+    vSum += w * p.v;
+  }
+  return wSum > 0 ? vSum / wSum : 0;
+}
+
+// Render IDW heatmap onto a canvas, return as PNG data URL
+function renderHeatmapCanvas(readings, layerKey, bounds, width, height) {
+  const cfg = LAYERS[layerKey];
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+
+  // Map geo bounds to canvas coords
+  const minLng = bounds.getWest(),  maxLng = bounds.getEast();
+  const minLat = bounds.getSouth(), maxLat = bounds.getNorth();
+
+  // Build IDW point set in canvas space
+  const points = [];
+  readings.forEach(e => {
+    const lp = parseCoord(e.lat), lo = parseCoord(e.lon);
+    if (!lp.decimal || !lo.decimal) return;
+    const v = parseFloat(e[cfg.key]);
+    if (isNaN(v)) return;
+    const lng = parseFloat(lo.decimal), lat = parseFloat(lp.decimal);
+    const cx = (lng - minLng) / (maxLng - minLng) * width;
+    const cy = (1 - (lat - minLat) / (maxLat - minLat)) * height;
+    const { lngDeg } = metersToDeg(HEATMAP_RADIUS_METERS, lat);
+    const radiusPx = lngDeg / (maxLng - minLng) * width;
+    points.push({ x: cx, y: cy, v, r: radiusPx });
+  });
+
+  if (!points.length) return null;
+
+  // For performance: only compute pixels within bounding radius of any point
+  const imgData = ctx.createImageData(width, height);
+  const data = imgData.data;
+
+  for (let py = 0; py < height; py++) {
+    for (let px = 0; px < width; px++) {
+      // Find nearby points within influence radius
+      const nearby = points.filter(p => {
+        const dx = px - p.x, dy = py - p.y;
+        return (dx*dx + dy*dy) <= (p.r * p.r * 4); // 2x radius for smooth falloff
+      });
+      if (!nearby.length) continue;
+
+      // IDW interpolate
+      const val = idwValue(px, py, nearby);
+      const t = Math.max(0, Math.min(1, (val - cfg.min) / (cfg.max - cfg.min)));
+
+      // Distance fade: alpha falls off from centre of nearest point
+      let minDist = Infinity;
+      for (const p of nearby) {
+        const dx = px - p.x, dy = py - p.y;
+        const d = Math.sqrt(dx*dx + dy*dy);
+        if (d < minDist) minDist = d;
+      }
+      const nearestRadius = nearby.reduce((a, p) => {
+        const dx = px - p.x, dy = py - p.y;
+        return Math.sqrt(dx*dx + dy*dy) < Math.sqrt((px-a.x)**2+(py-a.y)**2) ? p : a;
+      }).r;
+      const alpha = Math.max(0, 1 - (minDist / nearestRadius));
+      if (alpha <= 0) continue;
+
+      // Get interpolated colour
+      const colorStr = lerpColor(cfg.stops, t);
+      const rgb = colorStr.match(/\d+/g).map(Number);
+
+      const idx = (py * width + px) * 4;
+      data[idx]   = rgb[0];
+      data[idx+1] = rgb[1];
+      data[idx+2] = rgb[2];
+      data[idx+3] = Math.round(alpha * 200); // max 200/255 opacity so satellite shows through
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas.toDataURL();
+}
+
+function makePopupHtml(e) {
+  return `<div style="min-width:160px">
     <div class="popup-row" style="margin-bottom:8px;border-bottom:1px solid #1e2e1e;padding-bottom:6px">
       <span class="popup-label">${e.date} ${e.ts}</span>
     </div>
@@ -481,42 +567,105 @@ function makePopupHtml(e){
   </div>`;
 }
 
-function clearMapMarkers(){mapMarkers.forEach(m=>m.remove());mapPopups.forEach(p=>p.remove());mapMarkers=[];mapPopups=[];}
+// Small dot markers for tap-to-popup (no visual gradient, just tap target)
+function clearMapMarkers() {
+  mapMarkers.forEach(m => m.remove());
+  mapPopups.forEach(p => p.remove());
+  mapMarkers = []; mapPopups = [];
+}
 
-function plotReadings(readings){
-  let hasGps=false;
-  readings.forEach(e=>{
-    const lp=parseCoord(e.lat),lo=parseCoord(e.lon);
-    if(!lp.decimal||!lo.decimal)return;
-    hasGps=true;
-    const lng=parseFloat(lo.decimal),lat=parseFloat(lp.decimal);
-    const el=makeMarkerEl(e);
-    const marker=new mapboxgl.Marker({element:el,anchor:'bottom'}).setLngLat([lng,lat]).addTo(mbMap);
-    const popup=new mapboxgl.Popup({offset:28,maxWidth:'230px'}).setHTML(makePopupHtml(e));
-    el.addEventListener('click',()=>popup.setLngLat([lng,lat]).addTo(mbMap));
-    mapMarkers.push(marker);mapPopups.push(popup);
+function addDotMarker(e, lng, lat) {
+  const cfg = LAYERS[activeLayer];
+  const color = getLayerColor(activeLayer, e[cfg.key]);
+  const el = document.createElement('div');
+  el.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};
+    border:2px solid rgba(255,255,255,0.8);cursor:pointer;
+    box-shadow:0 0 6px rgba(0,0,0,0.6);`;
+  const marker = new mapboxgl.Marker({element:el, anchor:'center'})
+    .setLngLat([lng, lat]).addTo(mbMap);
+  const popup = new mapboxgl.Popup({offset:10, maxWidth:'230px'})
+    .setHTML(makePopupHtml(e));
+  el.addEventListener('click', () => popup.setLngLat([lng, lat]).addTo(mbMap));
+  mapMarkers.push(marker); mapPopups.push(popup);
+}
+
+function plotReadings(readings) {
+  // Filter to readings with valid GPS and layer value
+  const valid = readings.filter(e => {
+    const lp = parseCoord(e.lat), lo = parseCoord(e.lon);
+    const cfg = LAYERS[activeLayer];
+    return lp.decimal && lo.decimal && !isNaN(parseFloat(e[cfg.key]));
   });
-  return hasGps;
+  if (!valid.length) return false;
+
+  // Add small dot markers for tap interaction
+  valid.forEach(e => {
+    const lp = parseCoord(e.lat), lo = parseCoord(e.lon);
+    addDotMarker(e, parseFloat(lo.decimal), parseFloat(lp.decimal));
+  });
+
+  // Build bounds from all valid points
+  const bounds = new mapboxgl.LngLatBounds();
+  valid.forEach(e => {
+    const lp = parseCoord(e.lat), lo = parseCoord(e.lon);
+    bounds.extend([parseFloat(lo.decimal), parseFloat(lp.decimal)]);
+  });
+  // Pad bounds generously so heatmap extends beyond outermost points
+  const paddedBounds = bounds.extend([
+    bounds.getWest()  - 0.0005, bounds.getSouth() - 0.0003,
+  ]).extend([
+    bounds.getEast()  + 0.0005, bounds.getNorth() + 0.0003,
+  ]);
+
+  // Render heatmap canvas
+  const W = 512, H = 512;
+  const dataUrl = renderHeatmapCanvas(valid, activeLayer, paddedBounds, W, H);
+  if (!dataUrl) return true;
+
+  // Add/update raster image source on Mapbox
+  const srcId = 'heatmap-src', layId = 'heatmap-layer';
+  if (mbMap.getLayer(layId)) mbMap.removeLayer(layId);
+  if (mbMap.getSource(srcId)) mbMap.removeSource(srcId);
+
+  mbMap.addSource(srcId, {
+    type: 'image',
+    url: dataUrl,
+    coordinates: [
+      [paddedBounds.getWest(),  paddedBounds.getNorth()],
+      [paddedBounds.getEast(),  paddedBounds.getNorth()],
+      [paddedBounds.getEast(),  paddedBounds.getSouth()],
+      [paddedBounds.getWest(),  paddedBounds.getSouth()],
+    ]
+  });
+  mbMap.addLayer({ id: layId, type: 'raster', source: srcId,
+    paint: { 'raster-opacity': 1, 'raster-fade-duration': 300 }
+  });
+
+  return true;
 }
 
-function refreshMap(){
-  if(!mbMap)return;
+function refreshMap() {
+  if (!mbMap) return;
   clearMapMarkers();
-  let readings=[];
-  if(mapFilter==='session'&&activeSession)readings=activeSession.readings;
-  else if(mapFilter==='all'){
-    if(activeSession)readings=[...activeSession.readings];
-    allSessions.forEach(s=>readings.push(...s.readings));
+  // Remove existing heatmap layer
+  if (mbMap.getLayer('heatmap-layer')) mbMap.removeLayer('heatmap-layer');
+  if (mbMap.getSource('heatmap-src'))  mbMap.removeSource('heatmap-src');
+
+  let readings = [];
+  if (mapFilter === 'session' && activeSession) readings = activeSession.readings;
+  else if (mapFilter === 'all') {
+    if (activeSession) readings = [...activeSession.readings];
+    allSessions.forEach(s => readings.push(...s.readings));
   }
-  const hasGps=plotReadings(readings);
-  document.getElementById('mapNoGps').style.display=(!hasGps&&readings.length>0)?'block':'none';
+  const hasGps = plotReadings(readings);
+  document.getElementById('mapNoGps').style.display = (!hasGps && readings.length > 0) ? 'block' : 'none';
 }
 
-function fitMapToMarkers(){
-  if(!mapMarkers.length){showToast('NO MARKERS TO FIT');return;}
-  const bounds=new mapboxgl.LngLatBounds();
-  mapMarkers.forEach(m=>bounds.extend(m.getLngLat()));
-  mbMap.fitBounds(bounds,{padding:80,maxZoom:18});
+function fitMapToMarkers() {
+  if (!mapMarkers.length) { showToast('NO MARKERS TO FIT'); return; }
+  const bounds = new mapboxgl.LngLatBounds();
+  mapMarkers.forEach(m => bounds.extend(m.getLngLat()));
+  mbMap.fitBounds(bounds, {padding:80, maxZoom:18});
 }
 function mapFilterSession(){mapFilter='session';document.getElementById('btnSession').classList.add('active');document.getElementById('btnAll').classList.remove('active');refreshMap();}
 function mapFilterAll(){mapFilter='all';document.getElementById('btnAll').classList.add('active');document.getElementById('btnSession').classList.remove('active');refreshMap();}
@@ -897,18 +1046,6 @@ window.addEventListener('load',()=>{
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
